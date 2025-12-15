@@ -1,5 +1,5 @@
 // src/core/ticket/ticket.service.js
-const { Ticket } = require('../../models');
+const { Ticket, TicketWorklog } = require('../../models');
 const { Op } = require('sequelize');
 
 const ESTADOS = {
@@ -29,6 +29,7 @@ function validarTicketCreate(data) {
 
     // Obligatorios
     if (!data.proyecto) errores.push('proyecto es obligatorio');
+    if (!data.titulo) errores.push('titulo es obligatorio');
     if (!data.severidad) errores.push('severidad es obligatoria');
     if (!data.entorno) errores.push('entorno es obligatorio');
     if (!data.descripcionBreve) errores.push('descripcionBreve es obligatoria');
@@ -174,6 +175,7 @@ exports.createTicket = async (data, user = null) => {
 
     const payload = {
         proyecto: data.proyecto,
+        titulo: data.titulo,
         modulo: data.modulo,
         cliente: data.cliente,
         severidad: data.severidad,
@@ -264,6 +266,7 @@ exports.updateTicket = async (id, data, user = null) => {
 
     await ticket.update({
         proyecto: data.proyecto ?? ticket.proyecto,
+        titulo: data.titulo ?? ticket.titulo,
         modulo: data.modulo ?? ticket.modulo,
         cliente: data.cliente ?? ticket.cliente,
         severidad: data.severidad ?? ticket.severidad,
@@ -297,4 +300,85 @@ exports.deleteTicket = async (id) => {
     }
     await ticket.destroy();
     return { message: 'Ticket eliminado' };
+};
+
+function validarWorklogCreate(data) {
+    const errores = [];
+    if (!data.horas || Number(data.horas) <= 0) errores.push('horas debe ser > 0');
+    if (data.tipo && !['TRABAJO', 'DEVOLUCION'].includes(data.tipo)) errores.push('tipo inválido');
+    if (errores.length) {
+        const err = new Error(errores.join('; '));
+        err.status = 400;
+        throw err;
+    }
+}
+
+exports.listWorklogs = async (ticketId) => {
+    await exports.getTicketById(ticketId); // valida existencia
+    return TicketWorklog.findAll({
+        where: { ticketId },
+        order: [['fecha', 'ASC'], ['id', 'ASC']],
+    });
+};
+
+exports.addWorklog = async (ticketId, data, user) => {
+    await exports.getTicketById(ticketId);
+    validarWorklogCreate(data);
+
+    const payload = {
+        ticketId: Number(ticketId),
+        fecha: data.fecha || new Date().toISOString().slice(0, 10),
+        horas: data.horas,
+        tipo: data.tipo || (data.esDevolucion ? 'DEVOLUCION' : 'TRABAJO'),
+        comentario: data.comentario || null,
+        creadoPorId: user?.id || null,
+    };
+
+    const wl = await TicketWorklog.create(payload);
+
+    // ✅ guardar documento 1 solo (sobrescribe)
+    if (data.docUrl && String(data.docUrl).trim()) {
+        await Ticket.update(
+            { linkDocumento: String(data.docUrl).trim() },
+            { where: { id: Number(ticketId) } }
+        );
+    }
+
+    // ✅ totales
+    const totalHoras =
+        (await TicketWorklog.sum('horas', { where: { ticketId: Number(ticketId) } })) || 0;
+
+    const totalDevueltos = await TicketWorklog.count({
+        where: { ticketId: Number(ticketId), tipo: 'DEVOLUCION' },
+    });
+
+    await Ticket.update(
+        { horasQa: totalHoras, vecesDevuelto: totalDevueltos },
+        { where: { id: Number(ticketId) } }
+    );
+
+    return wl;
+};
+
+exports.deleteWorklog = async (ticketId, worklogId) => {
+    await exports.getTicketById(ticketId);
+
+    const wl = await TicketWorklog.findOne({ where: { id: worklogId, ticketId: Number(ticketId) } });
+    if (!wl) {
+        const err = new Error('Worklog no encontrado');
+        err.status = 404;
+        throw err;
+    }
+
+    await wl.destroy();
+
+    const totalHoras = (await TicketWorklog.sum('horas', { where: { ticketId: Number(ticketId) } })) || 0;
+    const totalDevueltos = await TicketWorklog.count({ where: { ticketId: Number(ticketId), tipo: 'DEVOLUCION' } });
+
+    await Ticket.update(
+        { horasQa: totalHoras, vecesDevuelto: totalDevueltos },
+        { where: { id: Number(ticketId) } }
+    );
+
+    return { message: 'Worklog eliminado' };
 };

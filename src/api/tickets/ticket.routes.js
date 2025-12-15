@@ -17,4 +17,14 @@ router.put('/:id', requireRole('QA'), ticketController.actualizar);
 // Tal vez solo ADMIN podría borrar, pero por ahora QA
 router.delete('/:id', requireRole('QA'), ticketController.eliminar);
 
+// ver historial: cualquiera logueado (PM/QA/ADMIN)
+router.get('/:id/worklogs', ticketController.listWorklogs);
+
+// agregar horas: solo QA y ADMIN
+router.post('/:id/worklogs', requireRole('QA', 'ADMIN'), ticketController.addWorklog);
+
+// borrar worklog: solo ADMIN (por seguridad)
+router.delete('/:id/worklogs/:worklogId', requireRole('ADMIN'), ticketController.deleteWorklog);
+
+
 module.exports = router;

@@ -52,3 +52,25 @@ exports.eliminar = async (req, res, next) => {
         next(error);
     }
 };
+
+exports.listWorklogs = async (req, res, next) => {
+    try {
+        const data = await ticketService.listWorklogs(req.params.id);
+        res.json(data);
+    } catch (e) { next(e); }
+};
+
+exports.addWorklog = async (req, res, next) => {
+    try {
+        const data = await ticketService.addWorklog(req.params.id, req.body, req.user);
+        res.status(201).json(data);
+    } catch (e) { next(e); }
+};
+
+exports.deleteWorklog = async (req, res, next) => {
+    try {
+        const data = await ticketService.deleteWorklog(req.params.id, req.params.worklogId);
+        res.json(data);
+    } catch (e) { next(e); }
+};
+

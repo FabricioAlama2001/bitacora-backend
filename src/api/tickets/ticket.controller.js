@@ -3,6 +3,10 @@ const ticketService = require('../../core/ticket/ticket.service');
 
 const listar = async (req, res, next) => {
     try {
+        // Si sigues usando el listado por mes, cámbialo aquí:
+        // const month = req.query.month;
+        // const tickets = await ticketService.listTicketsByMonth(month);
+
         const tickets = await ticketService.listTickets();
         res.json(tickets);
     } catch (error) {
@@ -21,7 +25,7 @@ const obtenerPorId = async (req, res, next) => {
 
 const crear = async (req, res, next) => {
     try {
-        const user = req.user || null; // luego vendrá de auth
+        const user = req.user || null;
         const ticket = await ticketService.createTicket(req.body, user);
         res.status(201).json(ticket);
     } catch (error) {
@@ -48,11 +52,46 @@ const eliminar = async (req, res, next) => {
     }
 };
 
-// 👈 AQUÍ está la clave: exportar todas las funciones correctamente
+// =========================
+// Worklogs (Historial horas)
+// =========================
+
+const listWorklogs = async (req, res, next) => {
+    try {
+        const data = await ticketService.listWorklogs(req.params.id);
+        res.json(data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const addWorklog = async (req, res, next) => {
+    try {
+        const user = req.user || null;
+        const data = await ticketService.addWorklog(req.params.id, req.body, user);
+        res.status(201).json(data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const deleteWorklog = async (req, res, next) => {
+    try {
+        const data = await ticketService.deleteWorklog(req.params.id, req.params.worklogId);
+        res.json(data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Exportar TODO
 module.exports = {
     listar,
     obtenerPorId,
     crear,
     actualizar,
     eliminar,
+    listWorklogs,
+    addWorklog,
+    deleteWorklog,
 };

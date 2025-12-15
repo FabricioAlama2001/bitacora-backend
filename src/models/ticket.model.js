@@ -14,6 +14,10 @@ const Ticket = sequelize.define(
             type: DataTypes.STRING(150),
             allowNull: false,
         },
+        titulo: {
+            type: DataTypes.STRING(150),
+            allowNull: false,
+        },
         modulo: {
             type: DataTypes.STRING(150),
             allowNull: true,
