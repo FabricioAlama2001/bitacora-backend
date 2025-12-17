@@ -45,6 +45,9 @@ const actualizar = async (req, res, next) => {
 
 const eliminar = async (req, res, next) => {
     try {
+        const rol = req.user?.rol;
+        if (rol !== 'ADMIN') return res.status(403).json({ message: 'No autorizado' });
+
         const result = await ticketService.deleteTicket(req.params.id);
         res.json(result);
     } catch (error) {
@@ -67,12 +70,12 @@ const listWorklogs = async (req, res, next) => {
 
 const addWorklog = async (req, res, next) => {
     try {
-        const user = req.user || null;
-        const data = await ticketService.addWorklog(req.params.id, req.body, user);
+        const rol = req.user?.rol;
+        if (!['QA','ADMIN'].includes(rol)) return res.status(403).json({ message: 'No autorizado' });
+
+        const data = await ticketService.addWorklog(req.params.id, req.body, req.user);
         res.status(201).json(data);
-    } catch (error) {
-        next(error);
-    }
+    } catch (e) { next(e); }
 };
 
 const deleteWorklog = async (req, res, next) => {
@@ -84,7 +87,6 @@ const deleteWorklog = async (req, res, next) => {
     }
 };
 
-// Exportar TODO
 module.exports = {
     listar,
     obtenerPorId,

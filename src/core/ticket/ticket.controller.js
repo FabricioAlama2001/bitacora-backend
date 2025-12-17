@@ -74,3 +74,11 @@ exports.deleteWorklog = async (req, res, next) => {
     } catch (e) { next(e); }
 };
 
+function requireRole(...roles) {
+    return (req, res, next) => {
+        const rol = req.user?.rol; // PM | QA | ADMIN
+        if (!roles.includes(rol)) return res.status(403).json({ message: 'No autorizado' });
+        next();
+    };
+}
+

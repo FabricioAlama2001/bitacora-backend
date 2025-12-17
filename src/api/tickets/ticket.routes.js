@@ -11,12 +11,11 @@ router.get('/', ticketController.listar);
 router.get('/:id', ticketController.obtenerPorId);
 
 // Solo QA puede crear y actualizar (ejemplo)
-router.post('/', requireRole('QA'), ticketController.crear);
-router.put('/:id', requireRole('QA'), ticketController.actualizar);
+router.post('/', requireRole('PM', 'ADMIN'), ticketController.crear);
+router.put('/:id', requireRole('PM', 'QA', 'ADMIN'), ticketController.actualizar);
 
 // Tal vez solo ADMIN podría borrar, pero por ahora QA
-router.delete('/:id', requireRole('QA'), ticketController.eliminar);
-
+router.delete('/:id', requireRole('ADMIN'), ticketController.eliminar);
 // ver historial: cualquiera logueado (PM/QA/ADMIN)
 router.get('/:id/worklogs', ticketController.listWorklogs);
 
