@@ -11,7 +11,7 @@ Ticket.belongsTo(User, { foreignKey: 'creadoPorId', as: 'creadoPor' });
 
 // Ticket -> Worklogs
 Ticket.hasMany(TicketWorklog, { foreignKey: 'ticketId', as: 'worklogs', onDelete: 'CASCADE' });
-TicketWorklog.belongsTo(Ticket, { foreignKey: 'ticketId', as: 'ticket' });
+TicketWorklog.begitlongsTo(Ticket, { foreignKey: 'ticketId', as: 'ticket' });
 
 // (Opcional pero recomendado) User -> Worklogs
 User.hasMany(TicketWorklog, { foreignKey: 'creadoPorId', as: 'worklogsCreados' });

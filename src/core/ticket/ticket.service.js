@@ -2,6 +2,35 @@
 const { Ticket, TicketWorklog } = require('../../models');
 const { Op } = require('sequelize');
 
+const INCLUDE_CREADOR_TICKET = [
+    { model: User, as: 'creadoPor', attributes: ['id', 'nombre', 'rol', 'email'] }
+];
+const INCLUDE_CREADOR_WORKLOG = [
+    { model: User, as: 'creadoPor', attributes: ['id', 'nombre', 'rol', 'email'] }
+];
+const ERROR_TIPOS_VALIDOS = [
+    'FUNCIONALIDAD',
+    'CAMPOS_VALIDOS_FALLA',
+    'CAMPOS_INCOMPLETOS',
+    'VALIDACIONES_DEBILES',
+    'MENSAJES_CONFUSOS',
+    'CAMPOS_OBLIGATORIOS_MAL',
+    'REGLAS_NEGOCIO',
+    'BORDES',
+    'ESTADOS_INCONSISTENTES',
+    'PERMISOS_ROLES',
+    'SESION',
+    'NAVEGACION',
+    'UI_ENGANOSA',
+    'COMPATIBILIDAD',
+    'PERFORMANCE',
+    'NO_PERSISTE',
+    'CONCURRENCIA',
+    'ACCESIBILIDAD',
+    'I18N',
+    'SEGURIDAD_BASICA'
+];
+
 const ESTADOS = {
     REPORTADO: 'REPORTADO',
     EN_DEV: 'EN_DEV',
@@ -115,10 +144,10 @@ function getMonthRangeFromStr(monthStr) {
 
 // Listar TODOS (por si lo quieres usar en algún reporte global)
 exports.listTickets = async () => {
-    const tickets = await Ticket.findAll({
+    return Ticket.findAll({
+        include: INCLUDE_CREADOR_TICKET,
         order: [['id', 'DESC']],
     });
-    return tickets;
 };
 
 // Listar tickets por mes (reporteQa) + abiertos de meses anteriores
@@ -127,28 +156,15 @@ exports.listTicketsByMonth = async (monthStr) => {
     const m = normalizarMes(monthStr);
     const { start, end } = getMonthRangeFromStr(m);
 
-    // Tickets reportados en el mes
-    const enMes = {
-        reporteQa: {
-            [Op.gte]: start,
-            [Op.lt]: end,
-        },
-    };
-
-    // Tickets reportados ANTES de ese mes que SIGUEN abiertos
+    const enMes = { reporteQa: { [Op.gte]: start, [Op.lt]: end } };
     const abiertosAntes = {
-        estado: {
-            [Op.ne]: ESTADOS.CERRADO,
-        },
-        reporteQa: {
-            [Op.lt]: start,
-        },
+        estado: { [Op.ne]: ESTADOS.CERRADO },
+        reporteQa: { [Op.lt]: start },
     };
 
     return Ticket.findAll({
-        where: {
-            [Op.or]: [enMes, abiertosAntes],
-        },
+        where: { [Op.or]: [enMes, abiertosAntes] },
+        include: INCLUDE_CREADOR_TICKET,
         order: [['reporteQa', 'ASC']],
     });
 };
@@ -159,7 +175,10 @@ exports.listTicketsByMonth = async (monthStr) => {
 
 // Obtener un ticket por ID
 exports.getTicketById = async (id) => {
-    const ticket = await Ticket.findByPk(id);
+    const ticket = await Ticket.findByPk(id, {
+        include: INCLUDE_CREADOR_TICKET,
+    });
+
     if (!ticket) {
         const error = new Error('Ticket no encontrado');
         error.status = 404;
@@ -167,6 +186,7 @@ exports.getTicketById = async (id) => {
     }
     return ticket;
 };
+
 
 // Crear ticket
 exports.createTicket = async (data, user = null) => {
@@ -244,7 +264,6 @@ exports.updateTicket = async (id, data, user = null) => {
     if (data.envioDev) envioDev = data.envioDev;
     if (data.retornoQa) retornoQa = data.retornoQa;
     if (data.cierre) cierre = data.cierre;
-    if (typeof data.vecesDevuelto === 'number') vecesDevuelto = data.vecesDevuelto;
 
     // --- LÓGICA AUTOMÁTICA POR CAMBIO DE ESTADO ---
 
@@ -253,11 +272,6 @@ exports.updateTicket = async (id, data, user = null) => {
         if (!envioDev) envioDev = ahora;
     }
 
-    // EN_DEV -> EN_QA  → retornoQa y vecesDevuelto++
-    if (estadoActual === ESTADOS.EN_DEV && estadoNuevo === ESTADOS.EN_QA) {
-        if (!retornoQa) retornoQa = ahora;
-        vecesDevuelto = (vecesDevuelto || 0) + 1;
-    }
 
     // Cualquier -> CERRADO
     if (estadoActual !== ESTADOS.CERRADO && estadoNuevo === ESTADOS.CERRADO) {
@@ -306,6 +320,10 @@ function validarWorklogCreate(data) {
     const errores = [];
     if (!data.horas || Number(data.horas) <= 0) errores.push('horas debe ser > 0');
     if (data.tipo && !['TRABAJO', 'DEVOLUCION'].includes(data.tipo)) errores.push('tipo inválido');
+    // 👇 nuevo: validar tipo de error si viene
+    if (data.errorTipo && !ERROR_TIPOS_VALIDOS.includes(String(data.errorTipo))) {
+        errores.push('errorTipo inválido');
+    }
     if (errores.length) {
         const err = new Error(errores.join('; '));
         err.status = 400;
@@ -313,13 +331,16 @@ function validarWorklogCreate(data) {
     }
 }
 
+
 exports.listWorklogs = async (ticketId) => {
-    await exports.getTicketById(ticketId); // valida existencia
+    await exports.getTicketById(ticketId);
     return TicketWorklog.findAll({
         where: { ticketId },
+        include: INCLUDE_CREADOR_WORKLOG,
         order: [['fecha', 'ASC'], ['id', 'ASC']],
     });
 };
+
 
 exports.addWorklog = async (ticketId, data, user) => {
     await exports.getTicketById(ticketId);
@@ -332,6 +353,9 @@ exports.addWorklog = async (ticketId, data, user) => {
         tipo: data.tipo || (data.esDevolucion ? 'DEVOLUCION' : 'TRABAJO'),
         comentario: data.comentario || null,
         creadoPorId: user?.id || null,
+        // 👇 nuevo
+        errorTipo: data.errorTipo || null,
+        errorDetalle: data.errorDetalle || null,
     };
 
     const wl = await TicketWorklog.create(payload);
