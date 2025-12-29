@@ -1,5 +1,5 @@
 // src/core/ticket/ticket.service.js
-const { Ticket, TicketWorklog } = require('../../models');
+const { Ticket, TicketWorklog, User } = require('../../models');
 const { Op } = require('sequelize');
 
 const INCLUDE_CREADOR_TICKET = [
@@ -271,6 +271,11 @@ exports.updateTicket = async (id, data, user = null) => {
     if (estadoActual !== ESTADOS.EN_DEV && estadoNuevo === ESTADOS.EN_DEV) {
         if (!envioDev) envioDev = ahora;
     }
+    // EN_DEV -> EN_QA (envío QA)
+    if (estadoActual !== ESTADOS.EN_QA && estadoNuevo === ESTADOS.EN_QA) {
+        if (!retornoQa) retornoQa = ahora;
+    }
+
 
 
     // Cualquier -> CERRADO

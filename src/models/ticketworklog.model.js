@@ -15,7 +15,14 @@ const TicketWorklog = sequelize.define(
             allowNull: false,
             defaultValue: 'TRABAJO',
         },
-
+        errorTipo: {
+            type: DataTypes.STRING(60),
+            allowNull: true,
+        },
+        errorDetalle: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+        },
         comentario: { type: DataTypes.TEXT, allowNull: true },
         creadoPorId: { type: DataTypes.INTEGER, allowNull: true },
     },
@@ -23,6 +30,7 @@ const TicketWorklog = sequelize.define(
         tableName: 'ticket_worklogs',
         timestamps: true,
     }
+
 );
 
 module.exports = TicketWorklog;
