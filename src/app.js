@@ -8,6 +8,7 @@ const ticketRoutes = require('./api/tickets/ticket.routes');
 
 const { notFoundHandler } = require('./middlewares/notFound.middleware');
 const { errorHandler } = require('./middlewares/error.middleware');
+const kpisRoutes = require('./api/kpis/kpis.routes');
 
 const app = express();
 
@@ -18,6 +19,8 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/tickets', ticketRoutes);
+app.use('/api/kpis', kpisRoutes);
+
 
 // 404 y manejo de errores
 app.use(notFoundHandler);
