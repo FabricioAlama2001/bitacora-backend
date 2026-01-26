@@ -7,7 +7,7 @@ const listar = async (req, res, next) => {
         // const month = req.query.month;
         // const tickets = await ticketService.listTicketsByMonth(month);
 
-        const tickets = await ticketService.listTickets();
+        const tickets = await ticketService.listTicketsByMonth();
         res.json(tickets);
     } catch (error) {
         next(error);
@@ -86,6 +86,23 @@ const deleteWorklog = async (req, res, next) => {
         next(error);
     }
 };
+const listarCerrados = async (req, res, next) => {
+    try {
+        const { page, limit, month, q } = req.query;
+
+        const data = await ticketService.listClosedTickets({
+            page,
+            limit,
+            month,
+            q,
+        });
+
+        res.json(data);
+    } catch (error) {
+        next(error);
+    }
+};
+
 
 module.exports = {
     listar,
@@ -96,4 +113,5 @@ module.exports = {
     listWorklogs,
     addWorklog,
     deleteWorklog,
+    listarCerrados,
 };

@@ -411,3 +411,59 @@ exports.deleteWorklog = async (ticketId, worklogId) => {
 
     return { message: 'Worklog eliminado' };
 };
+
+// =========================
+// Historial: tickets cerrados (paginado + filtros)
+// =========================
+exports.listClosedTickets = async ({ page = 1, limit = 20, month, q } = {}) => {
+    const p = Math.max(parseInt(page, 10) || 1, 1);
+    const l = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100); // tope 100
+    const offset = (p - 1) * l;
+
+    const where = {
+        estado: ESTADOS.CERRADO,
+    };
+
+    // Filtro por mes (según fecha de cierre)
+    if (month) {
+        const m = normalizarMes(month);
+        const { start, end } = getMonthRangeFromStr(m);
+        where.cierre = { [Op.gte]: start, [Op.lt]: end };
+    }
+
+    // Búsqueda opcional (Postgres: iLike)
+    if (q && String(q).trim()) {
+        const term = `%${String(q).trim()}%`;
+        where[Op.or] = [
+            { proyecto: { [Op.iLike]: term } },
+            { titulo: { [Op.iLike]: term } },
+            { cliente: { [Op.iLike]: term } },
+            { responsableDev: { [Op.iLike]: term } },
+            { ticket: { [Op.iLike]: term } },
+        ];
+    }
+
+    const { count, rows } = await Ticket.findAndCountAll({
+        where,
+        include: INCLUDE_CREADOR_TICKET,
+        order: [
+            ['cierre', 'DESC'],
+            ['id', 'DESC'],
+        ],
+        limit: l,
+        offset,
+    });
+
+    const totalPages = Math.ceil(count / l) || 1;
+
+    return {
+        rows,
+        meta: {
+            page: p,
+            limit: l,
+            total: count,
+            totalPages,
+        },
+    };
+};
+

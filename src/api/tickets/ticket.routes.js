@@ -7,23 +7,23 @@ const { requireRole } = require('../../auth/role.middleware');
 // Todas las rutas de tickets requieren estar logueado
 router.use(authMiddleware);
 
+// ✅ listar tickets (por mes actual)
 router.get('/', ticketController.listar);
+
+// ✅ historial de CERRADOS (IMPORTANTE: antes de /:id)
+router.get('/cerrados', ticketController.listarCerrados);
+
+// ✅ obtener por id (después de /cerrados)
 router.get('/:id', ticketController.obtenerPorId);
 
-// Solo QA puede crear y actualizar (ejemplo)
-router.post('/', requireRole('PM', 'ADMIN'), ticketController.crear);
-router.put('/:id', requireRole('PM', 'QA', 'ADMIN'), ticketController.actualizar);
-
-// Tal vez solo ADMIN podría borrar, pero por ahora QA
-router.delete('/:id', requireRole('ADMIN'), ticketController.eliminar);
-// ver historial: cualquiera logueado (PM/QA/ADMIN)
+// Worklogs
 router.get('/:id/worklogs', ticketController.listWorklogs);
-
-// agregar horas: solo QA y ADMIN
 router.post('/:id/worklogs', requireRole('QA', 'ADMIN'), ticketController.addWorklog);
-
-// borrar worklog: solo ADMIN (por seguridad)
 router.delete('/:id/worklogs/:worklogId', requireRole('ADMIN'), ticketController.deleteWorklog);
 
+// CRUD
+router.post('/', requireRole('PM', 'ADMIN'), ticketController.crear);
+router.put('/:id', requireRole('PM', 'QA', 'ADMIN'), ticketController.actualizar);
+router.delete('/:id', requireRole('ADMIN'), ticketController.eliminar);
 
 module.exports = router;
