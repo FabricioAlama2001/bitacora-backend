@@ -1,4 +1,3 @@
-// src/models/ticket.model.js
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/db');
 
@@ -10,91 +9,91 @@ const Ticket = sequelize.define(
             autoIncrement: true,
             primaryKey: true,
         },
-        proyecto: {
+        project: {
             type: DataTypes.STRING(150),
             allowNull: false,
         },
-        titulo: {
+        title: {
             type: DataTypes.STRING(150),
             allowNull: false,
         },
-        modulo: {
+        module: {
             type: DataTypes.STRING(150),
             allowNull: true,
         },
-        cliente: {
+        client: {
             type: DataTypes.STRING(150),
             allowNull: true,
         },
-        severidad: {
+        severity: {
             type: DataTypes.STRING(50),
             allowNull: true,
         },
-        ticket: {
+        ticketNumber: {
             type: DataTypes.STRING(100),
             allowNull: true,
         },
-        entorno: {
+        environment: {
             type: DataTypes.STRING(50),
             allowNull: true,
         },
-        estado: {
-            type: DataTypes.ENUM('REPORTADO', 'EN_DEV', 'EN_QA', 'CERRADO'),
+        status: {
+            type: DataTypes.ENUM('REPORTED', 'IN_DEV', 'IN_QA', 'CLOSED'),
             allowNull: false,
-            defaultValue: 'REPORTADO',
+            defaultValue: 'REPORTED',
         },
-        reporteQa: {
+        qaReportDate: {
             type: DataTypes.DATE,
-            field: 'reporte_qa',
+            field: 'qa_report_date',
             allowNull: true,
         },
-        envioDev: {
+        sentToDevDate: {
             type: DataTypes.DATE,
-            field: 'envio_dev',
+            field: 'sent_to_dev_date',
             allowNull: true,
         },
-        retornoQa: {
+        returnedToQaDate: {
             type: DataTypes.DATE,
-            field: 'retorno_qa',
+            field: 'returned_to_qa_date',
             allowNull: true,
         },
-        cierre: {
+        closedAt: {
             type: DataTypes.DATE,
             allowNull: true,
         },
-        vecesDevuelto: {
+        timesReturned: {
             type: DataTypes.INTEGER,
-            field: 'veces_devuelto',
+            field: 'times_returned',
             defaultValue: 0,
         },
-        descripcionBreve: {
+        shortDescription: {
             type: DataTypes.TEXT,
-            field: 'descripcion_breve',
+            field: 'short_description',
             allowNull: true,
         },
-        responsableDev: {
+        devOwner: {
             type: DataTypes.STRING(150),
-            field: 'responsable_dev',
+            field: 'dev_owner',
             allowNull: true,
         },
-        horasQa: {
+        qaHours: {
             type: DataTypes.DECIMAL(5, 2),
-            field: 'horas_qa',
+            field: 'qa_hours',
             allowNull: true,
         },
-        linkDocumento: {
+        documentLink: {
             type: DataTypes.STRING(255),
-            field: 'link_documento',
+            field: 'document_link',
             allowNull: true,
         },
-        creadoPorId: {
+        createdById: {
             type: DataTypes.INTEGER,
-            field: 'creado_por_id',
+            field: 'created_by_id',
             allowNull: true,
         },
     },
     {
-        tableName: 'bitacora',
+        tableName: 'ticket',
         timestamps: true,
     }
 );

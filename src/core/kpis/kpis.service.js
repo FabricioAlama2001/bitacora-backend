@@ -1,190 +1,192 @@
+// src/core/kpis/kpis.service.js
 const { Ticket, TicketWorklog } = require('../../models');
 const { Op, fn, col, literal } = require('sequelize');
 
-// ===== helpers mes =====
-function normalizarMes(monthStr) {
+// ===== internal codes for business logic =====
+const CLOSED_STATUS = 'CLOSED';
+const RETURN_TYPE = 'RETURN';
+
+// ===== month helpers =====
+function normalizeMonth(monthStr) {
     if (!monthStr) return null;
     return String(monthStr).trim();
 }
 
 function getMonthRange(monthStr) {
-    const [yStr, mStr] = monthStr.split('-');
-    const year = Number(yStr);
-    const monthIndex = Number(mStr) - 1;
+    const [yearStr, monthOnlyStr] = monthStr.split('-');
+    const year = Number(yearStr);
+    const monthIndex = Number(monthOnlyStr) - 1;
 
     if (!year || monthIndex < 0 || monthIndex > 11) {
-        const err = new Error('month inválido, usa formato YYYY-MM');
-        err.status = 400;
-        throw err;
+        const error = new Error('month inválido, usa formato YYYY-MM');
+        error.status = 400;
+        throw error;
     }
 
     const start = new Date(year, monthIndex, 1, 0, 0, 0);
     const endExclusive = new Date(year, monthIndex + 1, 1, 0, 0, 0);
 
-    // para DATEONLY (worklogs.fecha) en formato YYYY-MM-DD
+    // for DATEONLY fields
     const startStr = start.toISOString().slice(0, 10);
-    const endLastDay = new Date(year, monthIndex + 1, 0, 0, 0, 0); // último día del mes
+    const endLastDay = new Date(year, monthIndex + 1, 0, 0, 0, 0);
     const endStr = endLastDay.toISOString().slice(0, 10);
 
     return { start, endExclusive, startStr, endStr };
 }
 
-// ===== filtro por rol (para no filtrar en front y listo) =====
-function filtrarPorRol(payload, rol) {
-    const base = {
+// ===== role filter =====
+function filterByRole(payload, role) {
+    const basePayload = {
         month: payload.month,
         totals: payload.totals,
-        porEstado: payload.porEstado,
-        porSeveridad: payload.porSeveridad,
+        ticketsByStatus: payload.ticketsByStatus,
+        ticketsBySeverity: payload.ticketsBySeverity,
     };
 
-    if (rol === 'QA') {
+    if (role === 'QA') {
         return {
-            ...base,
+            ...basePayload,
             qa: payload.qa,
         };
     }
 
-    if (rol === 'PM') {
+    if (role === 'PM') {
         return {
-            ...base,
+            ...basePayload,
             pm: payload.pm,
         };
     }
 
-    // ADMIN ve todo
     return payload;
 }
 
-// ===== service principal =====
+// ===== main service =====
 exports.getKpis = async ({ month, user }) => {
-    const rol = user?.rol || 'QA';
-    const m = normalizarMes(month);
+    const role = user?.role || 'QA';
+    const normalizedMonth = normalizeMonth(month);
 
-    // where tickets
-    const whereTicket = {};
-    // where worklogs
-    const whereWl = {};
+    const ticketWhere = {};
+    const worklogWhere = {};
 
-    if (m) {
-        const { start, endExclusive, startStr, endStr } = getMonthRange(m);
+    if (normalizedMonth) {
+        const { start, endExclusive, startStr, endStr } = getMonthRange(normalizedMonth);
 
-        // tickets del mes por reporteQa
-        whereTicket.reporteQa = { [Op.gte]: start, [Op.lt]: endExclusive };
+        // tickets filtered by qaReportDate
+        ticketWhere.qaReportDate = { [Op.gte]: start, [Op.lt]: endExclusive };
 
-        // worklogs del mes por fecha (DATEONLY)
-        whereWl.fecha = { [Op.between]: [startStr, endStr] };
+        // worklogs filtered by date (DATEONLY)
+        worklogWhere.date = { [Op.between]: [startStr, endStr] };
     }
 
-    // ===== KPIs comunes =====
-    const totalTickets = await Ticket.count({ where: whereTicket });
+    // ===== common KPIs =====
+    const totalTickets = await Ticket.count({ where: ticketWhere });
 
-    const cerrados = await Ticket.count({
-        where: { ...whereTicket, estado: 'CERRADO' },
+    const closedTickets = await Ticket.count({
+        where: { ...ticketWhere, status: CLOSED_STATUS },
     });
 
-    const abiertos = await Ticket.count({
-        where: { ...whereTicket, estado: { [Op.ne]: 'CERRADO' } },
+    const openTickets = await Ticket.count({
+        where: { ...ticketWhere, status: { [Op.ne]: CLOSED_STATUS } },
     });
 
-    const porEstadoRaw = await Ticket.findAll({
-        attributes: ['estado', [fn('COUNT', col('id')), 'count']],
-        where: whereTicket,
-        group: ['estado'],
+    const ticketsByStatusRaw = await Ticket.findAll({
+        attributes: ['status', [fn('COUNT', col('id')), 'count']],
+        where: ticketWhere,
+        group: ['status'],
         raw: true,
     });
 
-    const porSeveridadRaw = await Ticket.findAll({
-        attributes: ['severidad', [fn('COUNT', col('id')), 'count']],
-        where: whereTicket,
-        group: ['severidad'],
+    const ticketsBySeverityRaw = await Ticket.findAll({
+        attributes: ['severity', [fn('COUNT', col('id')), 'count']],
+        where: ticketWhere,
+        group: ['severity'],
         raw: true,
     });
 
-    // normaliza a { label, count }
-    const porEstado = porEstadoRaw.map((r) => ({
-        label: r.estado || 'SIN_ESTADO',
-        count: Number(r.count || 0),
+    const ticketsByStatus = ticketsByStatusRaw.map((row) => ({
+        label: row.status || 'SIN_ESTADO',
+        count: Number(row.count || 0),
     }));
 
-    const porSeveridad = porSeveridadRaw.map((r) => ({
-        label: r.severidad || 'SIN_SEVERIDAD',
-        count: Number(r.count || 0),
+    const ticketsBySeverity = ticketsBySeverityRaw.map((row) => ({
+        label: row.severity || 'SIN_SEVERIDAD',
+        count: Number(row.count || 0),
     }));
 
-    // ===== KPIs QA =====
-    const horasQaTotal =
-        (await TicketWorklog.sum('horas', { where: whereWl })) || 0;
+    // ===== QA KPIs =====
+    const totalQaHours =
+        (await TicketWorklog.sum('hours', { where: worklogWhere })) || 0;
 
-    const devolucionesTotal = await TicketWorklog.count({
-        where: { ...whereWl, tipo: 'DEVOLUCION' },
+    const totalReturns = await TicketWorklog.count({
+        where: { ...worklogWhere, type: RETURN_TYPE },
     });
 
-    const topErrorTipoRaw = await TicketWorklog.findAll({
-        attributes: ['errorTipo', [fn('COUNT', col('id')), 'count']],
+    const topErrorTypesRaw = await TicketWorklog.findAll({
+        attributes: ['errorType', [fn('COUNT', col('id')), 'count']],
         where: {
-            ...whereWl,
-            errorTipo: { [Op.ne]: null },
+            ...worklogWhere,
+            errorType: { [Op.ne]: null },
         },
-        group: ['errorTipo'],
+        group: ['errorType'],
         order: [[literal('count'), 'DESC']],
         limit: 10,
         raw: true,
     });
 
-    const topErrorTipo = topErrorTipoRaw.map((r) => ({
-        errorTipo: r.errorTipo,
-        count: Number(r.count || 0),
+    const topErrorTypes = topErrorTypesRaw.map((row) => ({
+        errorType: row.errorType,
+        count: Number(row.count || 0),
     }));
 
-    // ===== KPIs PM =====
-    const ticketsPorProyectoRaw = await Ticket.findAll({
-        attributes: ['proyecto', [fn('COUNT', col('id')), 'count']],
-        where: whereTicket,
-        group: ['proyecto'],
+    // ===== PM KPIs =====
+    const ticketsByProjectRaw = await Ticket.findAll({
+        attributes: ['project', [fn('COUNT', col('id')), 'count']],
+        where: ticketWhere,
+        group: ['project'],
         order: [[literal('count'), 'DESC']],
         raw: true,
     });
 
-    const abiertosPorProyectoRaw = await Ticket.findAll({
-        attributes: ['proyecto', [fn('COUNT', col('id')), 'count']],
-        where: { ...whereTicket, estado: { [Op.ne]: 'CERRADO' } },
-        group: ['proyecto'],
+    const openTicketsByProjectRaw = await Ticket.findAll({
+        attributes: ['project', [fn('COUNT', col('id')), 'count']],
+        where: {
+            ...ticketWhere,
+            status: { [Op.ne]: CLOSED_STATUS },
+        },
+        group: ['project'],
         order: [[literal('count'), 'DESC']],
         raw: true,
     });
 
-    const ticketsPorProyecto = ticketsPorProyectoRaw.map((r) => ({
-        proyecto: r.proyecto || 'SIN_PROYECTO',
-        count: Number(r.count || 0),
+    const ticketsByProject = ticketsByProjectRaw.map((row) => ({
+        project: row.project || 'SIN_PROYECTO',
+        count: Number(row.count || 0),
     }));
 
-    const abiertosPorProyecto = abiertosPorProyectoRaw.map((r) => ({
-        proyecto: r.proyecto || 'SIN_PROYECTO',
-        count: Number(r.count || 0),
+    const openTicketsByProject = openTicketsByProjectRaw.map((row) => ({
+        project: row.project || 'SIN_PROYECTO',
+        count: Number(row.count || 0),
     }));
 
     const payload = {
-        month: m, // null si es global
+        month: normalizedMonth,
         totals: {
             totalTickets,
-            abiertos,
-            cerrados,
+            openTickets,
+            closedTickets,
         },
-        porEstado,
-        porSeveridad,
-
+        ticketsByStatus,
+        ticketsBySeverity,
         qa: {
-            horasQaTotal: Number(horasQaTotal),
-            devolucionesTotal,
-            topErrorTipo,
+            totalQaHours: Number(totalQaHours),
+            totalReturns,
+            topErrorTypes,
         },
-
         pm: {
-            ticketsPorProyecto,
-            abiertosPorProyecto,
+            ticketsByProject,
+            openTicketsByProject,
         },
     };
 
-    return filtrarPorRol(payload, rol);
+    return filterByRole(payload, role);
 };

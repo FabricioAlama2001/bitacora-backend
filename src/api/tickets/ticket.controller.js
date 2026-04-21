@@ -1,12 +1,8 @@
 // src/api/tickets/ticket.controller.js
 const ticketService = require('../../core/ticket/ticket.service');
 
-const listar = async (req, res, next) => {
+const listTickets = async (req, res, next) => {
     try {
-        // Si sigues usando el listado por mes, cámbialo aquí:
-        // const month = req.query.month;
-        // const tickets = await ticketService.listTicketsByMonth(month);
-
         const tickets = await ticketService.listTicketsByMonth();
         res.json(tickets);
     } catch (error) {
@@ -14,7 +10,7 @@ const listar = async (req, res, next) => {
     }
 };
 
-const obtenerPorId = async (req, res, next) => {
+const getTicketById = async (req, res, next) => {
     try {
         const ticket = await ticketService.getTicketById(req.params.id);
         res.json(ticket);
@@ -23,7 +19,7 @@ const obtenerPorId = async (req, res, next) => {
     }
 };
 
-const crear = async (req, res, next) => {
+const createTicket = async (req, res, next) => {
     try {
         const user = req.user || null;
         const ticket = await ticketService.createTicket(req.body, user);
@@ -33,7 +29,7 @@ const crear = async (req, res, next) => {
     }
 };
 
-const actualizar = async (req, res, next) => {
+const updateTicket = async (req, res, next) => {
     try {
         const user = req.user || null;
         const ticket = await ticketService.updateTicket(req.params.id, req.body, user);
@@ -43,10 +39,13 @@ const actualizar = async (req, res, next) => {
     }
 };
 
-const eliminar = async (req, res, next) => {
+const deleteTicket = async (req, res, next) => {
     try {
-        const rol = req.user?.rol;
-        if (rol !== 'ADMIN') return res.status(403).json({ message: 'No autorizado' });
+        const role = req.user?.role;
+
+        if (role !== 'ADMIN') {
+            return res.status(403).json({ message: 'No autorizado' });
+        }
 
         const result = await ticketService.deleteTicket(req.params.id);
         res.json(result);
@@ -54,10 +53,6 @@ const eliminar = async (req, res, next) => {
         next(error);
     }
 };
-
-// =========================
-// Worklogs (Historial horas)
-// =========================
 
 const listWorklogs = async (req, res, next) => {
     try {
@@ -70,12 +65,17 @@ const listWorklogs = async (req, res, next) => {
 
 const addWorklog = async (req, res, next) => {
     try {
-        const rol = req.user?.rol;
-        if (!['QA','ADMIN'].includes(rol)) return res.status(403).json({ message: 'No autorizado' });
+        const role = req.user?.role;
+
+        if (!['QA', 'ADMIN'].includes(role)) {
+            return res.status(403).json({ message: 'No autorizado' });
+        }
 
         const data = await ticketService.addWorklog(req.params.id, req.body, req.user);
         res.status(201).json(data);
-    } catch (e) { next(e); }
+    } catch (error) {
+        next(error);
+    }
 };
 
 const deleteWorklog = async (req, res, next) => {
@@ -86,7 +86,8 @@ const deleteWorklog = async (req, res, next) => {
         next(error);
     }
 };
-const listarCerrados = async (req, res, next) => {
+
+const listClosedTickets = async (req, res, next) => {
     try {
         const { page, limit, month, q } = req.query;
 
@@ -103,15 +104,14 @@ const listarCerrados = async (req, res, next) => {
     }
 };
 
-
 module.exports = {
-    listar,
-    obtenerPorId,
-    crear,
-    actualizar,
-    eliminar,
+    listTickets,
+    getTicketById,
+    createTicket,
+    updateTicket,
+    deleteTicket,
     listWorklogs,
     addWorklog,
     deleteWorklog,
-    listarCerrados,
+    listClosedTickets,
 };

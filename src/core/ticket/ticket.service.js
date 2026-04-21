@@ -1,469 +1,408 @@
-// src/core/ticket/ticket.service.js
 const { Ticket, TicketWorklog, User } = require('../../models');
 const { Op } = require('sequelize');
 
-const INCLUDE_CREADOR_TICKET = [
-    { model: User, as: 'creadoPor', attributes: ['id', 'nombre', 'rol', 'email'] }
-];
-const INCLUDE_CREADOR_WORKLOG = [
-    { model: User, as: 'creadoPor', attributes: ['id', 'nombre', 'rol', 'email'] }
-];
-const ERROR_TIPOS_VALIDOS = [
-    'FUNCIONALIDAD',
-    'CAMPOS_VALIDOS_FALLA',
-    'CAMPOS_INCOMPLETOS',
-    'VALIDACIONES_DEBILES',
-    'MENSAJES_CONFUSOS',
-    'CAMPOS_OBLIGATORIOS_MAL',
-    'REGLAS_NEGOCIO',
-    'BORDES',
-    'ESTADOS_INCONSISTENTES',
-    'PERMISOS_ROLES',
-    'SESION',
-    'NAVEGACION',
-    'UI_ENGANOSA',
-    'COMPATIBILIDAD',
-    'PERFORMANCE',
-    'NO_PERSISTE',
-    'CONCURRENCIA',
-    'ACCESIBILIDAD',
-    'I18N',
-    'SEGURIDAD_BASICA'
+const {
+  TICKET_STATUS,
+  WORKLOG_TYPE,
+  ERROR_TYPE,
+  SEVERITY,
+  ENVIRONMENT,
+} = require('../../shared/enums');
+
+const TICKET_MESSAGES = require('../../shared/messages/ticket.messages');
+const WORKLOG_MESSAGES = require('../../shared/messages/worklog.messages');
+
+const INCLUDE_TICKET_CREATOR = [
+  { model: User, as: 'createdBy', attributes: ['id', 'name', 'role', 'email'] },
 ];
 
-const ESTADOS = {
-    REPORTADO: 'REPORTADO',
-    EN_DEV: 'EN_DEV',
-    EN_QA: 'EN_QA',
-    CERRADO: 'CERRADO',
+const INCLUDE_WORKLOG_CREATOR = [
+  { model: User, as: 'createdBy', attributes: ['id', 'name', 'role', 'email'] },
+];
+
+const VALID_ERROR_TYPES = Object.keys(ERROR_TYPE);
+const VALID_STATUSES = Object.keys(TICKET_STATUS);
+const VALID_SEVERITIES = Object.values(SEVERITY);
+const VALID_ENVIRONMENTS = Object.keys(ENVIRONMENT);
+
+const VALID_TRANSITIONS = {
+  REPORTED: ['IN_DEV'],
+  IN_DEV: ['IN_QA'],
+  IN_QA: ['IN_DEV', 'CLOSED'],
+  CLOSED: [],
 };
 
-const TRANSICIONES_VALIDAS = {
-    [ESTADOS.REPORTADO]: [ESTADOS.EN_DEV],                  // Reportado -> En Dev
-    [ESTADOS.EN_DEV]: [ESTADOS.EN_QA],                      // En Dev -> En QA
-    [ESTADOS.EN_QA]: [ESTADOS.EN_DEV, ESTADOS.CERRADO],     // En QA -> En Dev o Cerrado
-    [ESTADOS.CERRADO]: [],                                  // Cerrado ya no se mueve
-};
+function validateTicketCreate(data) {
+  const errors = [];
 
-// Severidades y entornos válidos
-const SEVERIDADES_VALIDAS = ['Alta', 'Media', 'Baja'];
-const ENTORNOS_VALIDOS = ['QA', 'PROD'];
+  if (!data.project) errors.push('project es obligatorio');
+  if (!data.title) errors.push('title es obligatorio');
+  if (!data.severity) errors.push('severity es obligatoria');
+  if (!data.environment) errors.push('environment es obligatorio');
+  if (!data.shortDescription) errors.push('shortDescription es obligatoria');
 
-// =========================
-// Helpers de validación
-// =========================
+  if (data.severity && !VALID_SEVERITIES.includes(data.severity)) {
+    errors.push(`severity inválida (válidas: ${VALID_SEVERITIES.join(', ')})`);
+  }
 
-function validarTicketCreate(data) {
-    const errores = [];
+  if (data.environment && !VALID_ENVIRONMENTS.includes(data.environment)) {
+    errors.push(`environment inválido (válidos: ${VALID_ENVIRONMENTS.join(', ')})`);
+  }
 
-    // Obligatorios
-    if (!data.proyecto) errores.push('proyecto es obligatorio');
-    if (!data.titulo) errores.push('titulo es obligatorio');
-    if (!data.severidad) errores.push('severidad es obligatoria');
-    if (!data.entorno) errores.push('entorno es obligatorio');
-    if (!data.descripcionBreve) errores.push('descripcionBreve es obligatoria');
-
-    // Dominio de severidad
-    if (data.severidad && !SEVERIDADES_VALIDAS.includes(data.severidad)) {
-        errores.push(
-            `severidad inválida (válidas: ${SEVERIDADES_VALIDAS.join(', ')})`
-        );
-    }
-
-    // Dominio de entorno
-    if (data.entorno && !ENTORNOS_VALIDOS.includes(data.entorno)) {
-        errores.push(
-            `entorno inválido (válidos: ${ENTORNOS_VALIDOS.join(', ')})`
-        );
-    }
-
-    if (errores.length > 0) {
-        const err = new Error(errores.join('; '));
-        err.status = 400;
-        throw err;
-    }
+  if (errors.length > 0) {
+    const error = new Error(errors.join('; '));
+    error.status = 400;
+    throw error;
+  }
 }
 
-function validarTicketUpdate(data) {
-    const errores = [];
+function validateTicketUpdate(data) {
+  const errors = [];
 
-    if (data.severidad && !SEVERIDADES_VALIDAS.includes(data.severidad)) {
-        errores.push(
-            `severidad inválida (válidas: ${SEVERIDADES_VALIDAS.join(', ')})`
-        );
-    }
+  if (data.severity && !VALID_SEVERITIES.includes(data.severity)) {
+    errors.push(`severity inválida (válidas: ${VALID_SEVERITIES.join(', ')})`);
+  }
 
-    if (data.entorno && !ENTORNOS_VALIDOS.includes(data.entorno)) {
-        errores.push(
-            `entorno inválido (válidos: ${ENTORNOS_VALIDOS.join(', ')})`
-        );
-    }
+  if (data.environment && !VALID_ENVIRONMENTS.includes(data.environment)) {
+    errors.push(`environment inválido (válidos: ${VALID_ENVIRONMENTS.join(', ')})`);
+  }
 
-    if (errores.length > 0) {
-        const err = new Error(errores.join('; '));
-        err.status = 400;
-        throw err;
-    }
+  if (errors.length > 0) {
+    const error = new Error(errors.join('; '));
+    error.status = 400;
+    throw error;
+  }
 }
 
-function validarTransicion(estadoActual, estadoNuevo) {
-    if (estadoActual === estadoNuevo) return true;
-    const permitidos = TRANSICIONES_VALIDAS[estadoActual] || [];
-    return permitidos.includes(estadoNuevo);
+function validateTransition(currentStatus, newStatus) {
+  if (currentStatus === newStatus) return true;
+  const allowedTransitions = VALID_TRANSITIONS[currentStatus] || [];
+  return allowedTransitions.includes(newStatus);
 }
 
-// =========================
-// Helpers de mes (YYYY-MM)
-// =========================
+function normalizeMonth(monthStr) {
+  if (!monthStr) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  }
 
-// Si no mandan month, usamos el mes actual
-function normalizarMes(monthStr) {
-    if (!monthStr) {
-        const now = new Date();
-        const y = now.getFullYear();
-        const m = String(now.getMonth() + 1).padStart(2, '0');
-        return `${y}-${m}`;
-    }
-    return monthStr;
+  return monthStr;
 }
 
 function getMonthRangeFromStr(monthStr) {
-    const [yearStr, monthOnlyStr] = monthStr.split('-');
-    const year = Number(yearStr);
-    const monthIndex = Number(monthOnlyStr) - 1; // 0 = enero
+  const [yearStr, monthOnlyStr] = monthStr.split('-');
+  const year = Number(yearStr);
+  const monthIndex = Number(monthOnlyStr) - 1;
 
-    const start = new Date(year, monthIndex, 1, 0, 0, 0);
-    const end = new Date(year, monthIndex + 1, 1, 0, 0, 0); // primer día del siguiente mes
+  const start = new Date(year, monthIndex, 1, 0, 0, 0);
+  const end = new Date(year, monthIndex + 1, 1, 0, 0, 0);
 
-    return { start, end };
+  return { start, end };
 }
 
-// =========================
-// Listado de tickets
-// =========================
-
-// Listar TODOS (por si lo quieres usar en algún reporte global)
 exports.listTickets = async () => {
-    return Ticket.findAll({
-        include: INCLUDE_CREADOR_TICKET,
-        order: [['id', 'DESC']],
-    });
+  return Ticket.findAll({
+    include: INCLUDE_TICKET_CREATOR,
+    order: [['id', 'DESC']],
+  });
 };
 
-// Listar tickets por mes (reporteQa) + abiertos de meses anteriores
-// monthStr: 'YYYY-MM' (ej. '2025-01'). Si viene vacío, se usa el mes actual.
 exports.listTicketsByMonth = async (monthStr) => {
-    const m = normalizarMes(monthStr);
-    const { start, end } = getMonthRangeFromStr(m);
+  const normalizedMonth = normalizeMonth(monthStr);
+  const { start, end } = getMonthRangeFromStr(normalizedMonth);
 
-    const enMes = { reporteQa: { [Op.gte]: start, [Op.lt]: end } };
-    const abiertosAntes = {
-        estado: { [Op.ne]: ESTADOS.CERRADO },
-        reporteQa: { [Op.lt]: start },
-    };
+  const inMonth = { qaReportDate: { [Op.gte]: start, [Op.lt]: end } };
+  const openFromPreviousMonths = {
+    status: { [Op.ne]: 'CLOSED' },
+    qaReportDate: { [Op.lt]: start },
+  };
 
-    return Ticket.findAll({
-        where: { [Op.or]: [enMes, abiertosAntes] },
-        include: INCLUDE_CREADOR_TICKET,
-        order: [['reporteQa', 'ASC']],
-    });
+  return Ticket.findAll({
+    where: { [Op.or]: [inMonth, openFromPreviousMonths] },
+    include: INCLUDE_TICKET_CREATOR,
+    order: [['qaReportDate', 'ASC']],
+  });
 };
 
-// =========================
-// CRUD
-// =========================
-
-// Obtener un ticket por ID
 exports.getTicketById = async (id) => {
-    const ticket = await Ticket.findByPk(id, {
-        include: INCLUDE_CREADOR_TICKET,
-    });
+  const ticket = await Ticket.findByPk(id, {
+    include: INCLUDE_TICKET_CREATOR,
+  });
 
-    if (!ticket) {
-        const error = new Error('Ticket no encontrado');
-        error.status = 404;
-        throw error;
-    }
-    return ticket;
+  if (!ticket) {
+    const error = new Error(TICKET_MESSAGES.NOT_FOUND);
+    error.status = 404;
+    throw error;
+  }
+
+  return ticket;
 };
 
-
-// Crear ticket
 exports.createTicket = async (data, user = null) => {
-    validarTicketCreate(data);
-    const ahora = new Date();
+  validateTicketCreate(data);
+  const now = new Date();
 
-    const payload = {
-        proyecto: data.proyecto,
-        titulo: data.titulo,
-        modulo: data.modulo,
-        cliente: data.cliente,
-        severidad: data.severidad,
-        ticket: data.ticket,
-        entorno: data.entorno,
+  const payload = {
+    project: data.project,
+    title: data.title,
+    module: data.module,
+    client: data.client,
+    severity: data.severity,
+    ticketNumber: data.ticketNumber,
+    environment: data.environment,
+    status: 'REPORTED',
+    qaReportDate: data.qaReportDate || now,
+    sentToDevDate: null,
+    returnedToQaDate: null,
+    closedAt: null,
+    timesReturned: 0,
+    shortDescription: data.shortDescription,
+    devOwner: data.devOwner,
+    qaHours: data.qaHours,
+    documentLink: data.documentLink,
+    createdById: user?.id || null,
+  };
 
-        // Estado inicial SIEMPRE REPORTADO
-        estado: ESTADOS.REPORTADO,
-
-        // Si no mandan fecha de reporte, la ponemos ahora
-        reporteQa: data.reporteQa || ahora,
-
-        envioDev: null,
-        retornoQa: null,
-        cierre: null,
-        vecesDevuelto: 0,
-
-        descripcionBreve: data.descripcionBreve,
-        responsableDev: data.responsableDev,
-        horasQa: data.horasQa,
-        linkDocumento: data.linkDocumento,
-        creadoPorId: user?.id || null,
-    };
-
-    const nuevo = await Ticket.create(payload);
-    return nuevo;
+  const newTicket = await Ticket.create(payload);
+  return newTicket;
 };
 
-// Actualizar ticket
-exports.updateTicket = async (id, data, user = null) => {
-    const ticket = await Ticket.findByPk(id);
-    if (!ticket) {
-        const error = new Error('Ticket no encontrado');
-        error.status = 404;
-        throw error;
-    }
+exports.updateTicket = async (id, data) => {
+  const ticket = await Ticket.findByPk(id);
 
-    validarTicketUpdate(data);
+  if (!ticket) {
+    const error = new Error(TICKET_MESSAGES.NOT_FOUND);
+    error.status = 404;
+    throw error;
+  }
 
-    const estadoActual = ticket.estado;
-    let estadoNuevo = data.estado ?? estadoActual;
+  validateTicketUpdate(data);
 
-    // Validar estado
-    if (!Object.values(ESTADOS).includes(estadoNuevo)) {
-        const error = new Error('Estado inválido');
-        error.status = 400;
-        throw error;
-    }
+  const currentStatus = ticket.status;
+  const newStatus = data.status ?? currentStatus;
 
-    // Validar transición
-    if (!validarTransicion(estadoActual, estadoNuevo)) {
-        const error = new Error(
-            `Transición de estado no permitida: ${estadoActual} -> ${estadoNuevo}`
-        );
-        error.status = 400;
-        throw error;
-    }
+  if (!VALID_STATUSES.includes(newStatus)) {
+    const error = new Error(TICKET_MESSAGES.INVALID_STATUS);
+    error.status = 400;
+    throw error;
+  }
 
-    const ahora = new Date();
-    let envioDev = ticket.envioDev;
-    let retornoQa = ticket.retornoQa;
-    let cierre = ticket.cierre;
-    let vecesDevuelto = ticket.vecesDevuelto;
+  if (!validateTransition(currentStatus, newStatus)) {
+    const error = new Error(
+      `${TICKET_MESSAGES.INVALID_STATUS_TRANSITION}: ${currentStatus} -> ${newStatus}`
+    );
+    error.status = 400;
+    throw error;
+  }
 
-    // Permitir override manual desde el body si lo mandan
-    if (data.envioDev) envioDev = data.envioDev;
-    if (data.retornoQa) retornoQa = data.retornoQa;
-    if (data.cierre) cierre = data.cierre;
+  const now = new Date();
+  let sentToDevDate = ticket.sentToDevDate;
+  let returnedToQaDate = ticket.returnedToQaDate;
+  let closedAt = ticket.closedAt;
+  let timesReturned = ticket.timesReturned;
 
-    // --- LÓGICA AUTOMÁTICA POR CAMBIO DE ESTADO ---
+  if (data.sentToDevDate) sentToDevDate = data.sentToDevDate;
+  if (data.returnedToQaDate) returnedToQaDate = data.returnedToQaDate;
+  if (data.closedAt) closedAt = data.closedAt;
 
-    // REPORTADO -> EN_DEV
-    if (estadoActual !== ESTADOS.EN_DEV && estadoNuevo === ESTADOS.EN_DEV) {
-        if (!envioDev) envioDev = ahora;
-    }
-    // EN_DEV -> EN_QA (envío QA)
-    if (estadoActual !== ESTADOS.EN_QA && estadoNuevo === ESTADOS.EN_QA) {
-        if (!retornoQa) retornoQa = ahora;
-    }
+  if (currentStatus !== 'IN_DEV' && newStatus === 'IN_DEV') {
+    if (!sentToDevDate) sentToDevDate = now;
+  }
 
+  if (currentStatus !== 'IN_QA' && newStatus === 'IN_QA') {
+    if (!returnedToQaDate) returnedToQaDate = now;
+  }
 
+  if (currentStatus !== 'CLOSED' && newStatus === 'CLOSED') {
+    if (!closedAt) closedAt = now;
+  }
 
-    // Cualquier -> CERRADO
-    if (estadoActual !== ESTADOS.CERRADO && estadoNuevo === ESTADOS.CERRADO) {
-        if (!cierre) cierre = ahora;
-    }
+  await ticket.update({
+    project: data.project ?? ticket.project,
+    title: data.title ?? ticket.title,
+    module: data.module ?? ticket.module,
+    client: data.client ?? ticket.client,
+    severity: data.severity ?? ticket.severity,
+    ticketNumber: data.ticketNumber ?? ticket.ticketNumber,
+    environment: data.environment ?? ticket.environment,
+    status: newStatus,
+    qaReportDate: data.qaReportDate ?? ticket.qaReportDate,
+    sentToDevDate,
+    returnedToQaDate,
+    closedAt,
+    timesReturned,
+    shortDescription: data.shortDescription ?? ticket.shortDescription,
+    devOwner: data.devOwner ?? ticket.devOwner,
+    qaHours: data.qaHours ?? ticket.qaHours,
+    documentLink: data.documentLink ?? ticket.documentLink,
+  });
 
-    await ticket.update({
-        proyecto: data.proyecto ?? ticket.proyecto,
-        titulo: data.titulo ?? ticket.titulo,
-        modulo: data.modulo ?? ticket.modulo,
-        cliente: data.cliente ?? ticket.cliente,
-        severidad: data.severidad ?? ticket.severidad,
-        ticket: data.ticket ?? ticket.ticket,
-        entorno: data.entorno ?? ticket.entorno,
-
-        estado: estadoNuevo,
-
-        reporteQa: data.reporteQa ?? ticket.reporteQa,
-        envioDev,
-        retornoQa,
-        cierre,
-        vecesDevuelto,
-
-        descripcionBreve: data.descripcionBreve ?? ticket.descripcionBreve,
-        responsableDev: data.responsableDev ?? ticket.responsableDev,
-        horasQa: data.horasQa ?? ticket.horasQa,
-        linkDocumento: data.linkDocumento ?? ticket.linkDocumento,
-    });
-
-    return ticket;
+  return ticket;
 };
 
-// Eliminar ticket
 exports.deleteTicket = async (id) => {
-    const ticket = await Ticket.findByPk(id);
-    if (!ticket) {
-        const error = new Error('Ticket no encontrado');
-        error.status = 404;
-        throw error;
-    }
-    await ticket.destroy();
-    return { message: 'Ticket eliminado' };
+  const ticket = await Ticket.findByPk(id);
+
+  if (!ticket) {
+    const error = new Error(TICKET_MESSAGES.NOT_FOUND);
+    error.status = 404;
+    throw error;
+  }
+
+  await ticket.destroy();
+
+  return { message: TICKET_MESSAGES.DELETE_SUCCESS };
 };
 
-function validarWorklogCreate(data) {
-    const errores = [];
-    if (!data.horas || Number(data.horas) <= 0) errores.push('horas debe ser > 0');
-    if (data.tipo && !['TRABAJO', 'DEVOLUCION'].includes(data.tipo)) errores.push('tipo inválido');
-    // 👇 nuevo: validar tipo de error si viene
-    if (data.errorTipo && !ERROR_TIPOS_VALIDOS.includes(String(data.errorTipo))) {
-        errores.push('errorTipo inválido');
-    }
-    if (errores.length) {
-        const err = new Error(errores.join('; '));
-        err.status = 400;
-        throw err;
-    }
-}
+function validateWorklogCreate(data) {
+  const errors = [];
 
+  if (!data.hours || Number(data.hours) <= 0) {
+    errors.push(WORKLOG_MESSAGES.INVALID_HOURS);
+  }
+
+  if (data.type && !Object.keys(WORKLOG_TYPE).includes(data.type)) {
+    errors.push(WORKLOG_MESSAGES.INVALID_TYPE);
+  }
+
+  if (data.errorType && !VALID_ERROR_TYPES.includes(String(data.errorType))) {
+    errors.push(WORKLOG_MESSAGES.INVALID_ERROR_TYPE);
+  }
+
+  if (errors.length > 0) {
+    const error = new Error(errors.join('; '));
+    error.status = 400;
+    throw error;
+  }
+}
 
 exports.listWorklogs = async (ticketId) => {
-    await exports.getTicketById(ticketId);
-    return TicketWorklog.findAll({
-        where: { ticketId },
-        include: INCLUDE_CREADOR_WORKLOG,
-        order: [['fecha', 'ASC'], ['id', 'ASC']],
-    });
+  await exports.getTicketById(ticketId);
+
+  return TicketWorklog.findAll({
+    where: { ticketId },
+    include: INCLUDE_WORKLOG_CREATOR,
+    order: [['date', 'ASC'], ['id', 'ASC']],
+  });
 };
 
-
 exports.addWorklog = async (ticketId, data, user) => {
-    await exports.getTicketById(ticketId);
-    validarWorklogCreate(data);
+  await exports.getTicketById(ticketId);
+  validateWorklogCreate(data);
 
-    const payload = {
-        ticketId: Number(ticketId),
-        fecha: data.fecha || new Date().toISOString().slice(0, 10),
-        horas: data.horas,
-        tipo: data.tipo || (data.esDevolucion ? 'DEVOLUCION' : 'TRABAJO'),
-        comentario: data.comentario || null,
-        creadoPorId: user?.id || null,
-        // 👇 nuevo
-        errorTipo: data.errorTipo || null,
-        errorDetalle: data.errorDetalle || null,
-    };
+  const payload = {
+    ticketId: Number(ticketId),
+    date: data.date || new Date().toISOString().slice(0, 10),
+    hours: data.hours,
+    type: data.type || (data.isReturn ? 'RETURN' : 'WORK'),
+    comment: data.comment || null,
+    createdById: user?.id || null,
+    errorType: data.errorType || null,
+    errorDetail: data.errorDetail || null,
+  };
 
-    const wl = await TicketWorklog.create(payload);
+  const worklog = await TicketWorklog.create(payload);
 
-    // ✅ guardar documento 1 solo (sobrescribe)
-    if (data.docUrl && String(data.docUrl).trim()) {
-        await Ticket.update(
-            { linkDocumento: String(data.docUrl).trim() },
-            { where: { id: Number(ticketId) } }
-        );
-    }
-
-    // ✅ totales
-    const totalHoras =
-        (await TicketWorklog.sum('horas', { where: { ticketId: Number(ticketId) } })) || 0;
-
-    const totalDevueltos = await TicketWorklog.count({
-        where: { ticketId: Number(ticketId), tipo: 'DEVOLUCION' },
-    });
-
+  if (data.docUrl && String(data.docUrl).trim()) {
     await Ticket.update(
-        { horasQa: totalHoras, vecesDevuelto: totalDevueltos },
-        { where: { id: Number(ticketId) } }
+      { documentLink: String(data.docUrl).trim() },
+      { where: { id: Number(ticketId) } }
     );
+  }
 
-    return wl;
+  const totalQaHours =
+    (await TicketWorklog.sum('hours', { where: { ticketId: Number(ticketId) } })) || 0;
+
+  const totalReturns = await TicketWorklog.count({
+    where: { ticketId: Number(ticketId), type: 'RETURN' },
+  });
+
+  await Ticket.update(
+    { qaHours: totalQaHours, timesReturned: totalReturns },
+    { where: { id: Number(ticketId) } }
+  );
+
+  return worklog;
 };
 
 exports.deleteWorklog = async (ticketId, worklogId) => {
-    await exports.getTicketById(ticketId);
+  await exports.getTicketById(ticketId);
 
-    const wl = await TicketWorklog.findOne({ where: { id: worklogId, ticketId: Number(ticketId) } });
-    if (!wl) {
-        const err = new Error('Worklog no encontrado');
-        err.status = 404;
-        throw err;
-    }
+  const worklog = await TicketWorklog.findOne({
+    where: { id: worklogId, ticketId: Number(ticketId) },
+  });
 
-    await wl.destroy();
+  if (!worklog) {
+    const error = new Error(WORKLOG_MESSAGES.NOT_FOUND);
+    error.status = 404;
+    throw error;
+  }
 
-    const totalHoras = (await TicketWorklog.sum('horas', { where: { ticketId: Number(ticketId) } })) || 0;
-    const totalDevueltos = await TicketWorklog.count({ where: { ticketId: Number(ticketId), tipo: 'DEVOLUCION' } });
+  await worklog.destroy();
 
-    await Ticket.update(
-        { horasQa: totalHoras, vecesDevuelto: totalDevueltos },
-        { where: { id: Number(ticketId) } }
-    );
+  const totalQaHours =
+    (await TicketWorklog.sum('hours', { where: { ticketId: Number(ticketId) } })) || 0;
 
-    return { message: 'Worklog eliminado' };
+  const totalReturns = await TicketWorklog.count({
+    where: { ticketId: Number(ticketId), type: 'RETURN' },
+  });
+
+  await Ticket.update(
+    { qaHours: totalQaHours, timesReturned: totalReturns },
+    { where: { id: Number(ticketId) } }
+  );
+
+  return { message: WORKLOG_MESSAGES.DELETE_SUCCESS };
 };
 
-// =========================
-// Historial: tickets cerrados (paginado + filtros)
-// =========================
 exports.listClosedTickets = async ({ page = 1, limit = 20, month, q } = {}) => {
-    const p = Math.max(parseInt(page, 10) || 1, 1);
-    const l = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100); // tope 100
-    const offset = (p - 1) * l;
+  const currentPage = Math.max(parseInt(page, 10) || 1, 1);
+  const pageSize = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+  const offset = (currentPage - 1) * pageSize;
 
-    const where = {
-        estado: ESTADOS.CERRADO,
-    };
+  const where = {
+    status: 'CLOSED',
+  };
 
-    // Filtro por mes (según fecha de cierre)
-    if (month) {
-        const m = normalizarMes(month);
-        const { start, end } = getMonthRangeFromStr(m);
-        where.cierre = { [Op.gte]: start, [Op.lt]: end };
-    }
+  if (month) {
+    const normalizedMonth = normalizeMonth(month);
+    const { start, end } = getMonthRangeFromStr(normalizedMonth);
+    where.closedAt = { [Op.gte]: start, [Op.lt]: end };
+  }
 
-    // Búsqueda opcional (Postgres: iLike)
-    if (q && String(q).trim()) {
-        const term = `%${String(q).trim()}%`;
-        where[Op.or] = [
-            { proyecto: { [Op.iLike]: term } },
-            { titulo: { [Op.iLike]: term } },
-            { cliente: { [Op.iLike]: term } },
-            { responsableDev: { [Op.iLike]: term } },
-            { ticket: { [Op.iLike]: term } },
-        ];
-    }
+  if (q && String(q).trim()) {
+    const term = `%${String(q).trim()}%`;
+    where[Op.or] = [
+      { project: { [Op.iLike]: term } },
+      { title: { [Op.iLike]: term } },
+      { client: { [Op.iLike]: term } },
+      { devOwner: { [Op.iLike]: term } },
+      { ticketNumber: { [Op.iLike]: term } },
+    ];
+  }
 
-    const { count, rows } = await Ticket.findAndCountAll({
-        where,
-        include: INCLUDE_CREADOR_TICKET,
-        order: [
-            ['cierre', 'DESC'],
-            ['id', 'DESC'],
-        ],
-        limit: l,
-        offset,
-    });
+  const { count, rows } = await Ticket.findAndCountAll({
+    where,
+    include: INCLUDE_TICKET_CREATOR,
+    order: [
+      ['closedAt', 'DESC'],
+      ['id', 'DESC'],
+    ],
+    limit: pageSize,
+    offset,
+  });
 
-    const totalPages = Math.ceil(count / l) || 1;
+  const totalPages = Math.ceil(count / pageSize) || 1;
 
-    return {
-        rows,
-        meta: {
-            page: p,
-            limit: l,
-            total: count,
-            totalPages,
-        },
-    };
+  return {
+    rows,
+    meta: {
+      page: currentPage,
+      limit: pageSize,
+      total: count,
+      totalPages,
+    },
+  };
 };
-

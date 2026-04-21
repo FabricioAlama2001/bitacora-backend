@@ -1,4 +1,3 @@
-// src/models/user.model.js
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/db');
 
@@ -10,7 +9,7 @@ const User = sequelize.define(
             autoIncrement: true,
             primaryKey: true,
         },
-        nombre: {
+        name: {
             type: DataTypes.STRING(100),
             allowNull: false,
         },
@@ -18,19 +17,22 @@ const User = sequelize.define(
             type: DataTypes.STRING(150),
             allowNull: false,
             unique: true,
+            validate: {
+                isEmail: true,
+            },
         },
         passwordHash: {
             type: DataTypes.STRING(255),
             allowNull: false,
         },
-        rol: {
+        role: {
             type: DataTypes.ENUM('QA', 'PM', 'ADMIN'),
             allowNull: false,
             defaultValue: 'QA',
         },
     },
     {
-        tableName: 'usuarios',
+        tableName: 'users',
         timestamps: true,
     }
 );

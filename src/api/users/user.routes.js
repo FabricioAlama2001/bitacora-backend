@@ -2,11 +2,12 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('./user.controller');
-// Más adelante puedes proteger con ADMIN si quieres
+
+// Later you can protect these routes with ADMIN if needed
 // const { authMiddleware } = require('../../auth/auth.middleware');
 // const { requireRole } = require('../../auth/role.middleware');
 
-router.get('/', userController.listar);
-router.post('/register', userController.registrar);
+router.get('/', userController.listUsers);
+router.post('/register', userController.registerUser);
 
 module.exports = router;
