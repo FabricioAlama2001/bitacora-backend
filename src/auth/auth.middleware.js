@@ -12,9 +12,9 @@ const authMiddleware = (req, res, next) => {
 
     try {
         const decoded = verifyToken(token);
-        req.user = decoded; // { id, nombre, email, rol }
+        req.user = decoded; // { id, name, email, role }
         next();
-    } catch (err) {
+    } catch (error) {
         return res.status(401).json({ message: 'Token inválido o expirado' });
     }
 };

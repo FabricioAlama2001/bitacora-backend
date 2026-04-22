@@ -22,7 +22,7 @@ const INCLUDE_WORKLOG_CREATOR = [
 
 const VALID_ERROR_TYPES = Object.keys(ERROR_TYPE);
 const VALID_STATUSES = Object.keys(TICKET_STATUS);
-const VALID_SEVERITIES = Object.values(SEVERITY);
+const VALID_SEVERITIES = Object.values(SEVERITY).map((item) => item.label);
 const VALID_ENVIRONMENTS = Object.keys(ENVIRONMENT);
 
 const VALID_TRANSITIONS = {
