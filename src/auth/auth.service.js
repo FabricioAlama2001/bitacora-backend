@@ -24,6 +24,7 @@ async function login(email, password) {
         name: user.name,
         email: user.email,
         role: user.role,
+        avatarUrl: user.avatarUrl,
     };
 
     const token = signToken(payload);

@@ -18,8 +18,37 @@ const registerUser = async (req, res, next) => {
         next(error);
     }
 };
+const getMyProfile = async (req, res, next) => {
+    try {
+        const profile = await userService.getProfile(req.user.id);
+        res.json(profile);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const updateMyProfile = async (req, res, next) => {
+    try {
+        const profile = await userService.updateProfile(req.user.id, req.body);
+        res.json(profile);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const changeMyPassword = async (req, res, next) => {
+    try {
+        const result = await userService.changePassword(req.user.id, req.body);
+        res.json(result);
+    } catch (error) {
+        next(error);
+    }
+};
 
 module.exports = {
     listUsers,
     registerUser,
+    getMyProfile,
+    updateMyProfile,
+    changeMyPassword,
 };

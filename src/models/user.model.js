@@ -30,6 +30,11 @@ const User = sequelize.define(
             allowNull: false,
             defaultValue: 'QA',
         },
+        avatarUrl: {
+            type: DataTypes.STRING(255),
+            allowNull: true,
+            field: 'avatar_url',
+        },
     },
     {
         tableName: 'users',
